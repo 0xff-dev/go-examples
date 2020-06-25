@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/streadway/amqp"
 	"log"
 	"time"
@@ -19,17 +20,28 @@ func main() {
 		log.Fatal("create a channel error: ", err)
 	}
 	defer channel.Close()
-	queue, err := channel.QueueDeclare("hello", false, false, false, false, nil)
+	// Message durability
+	queue, err := channel.QueueDeclare("task_queue", true, false, false, false, nil)
 	if err != nil {
 		log.Fatal("Failed to declare a queue")
 	}
+	doneChan := make(chan struct{})
+	go func() {
+		UseQueue(channel, queue)
+		doneChan <- struct{}{}
+	}()
+	<- doneChan
+}
+
+func UseQueue(channel *amqp.Channel, queue amqp.Queue) {
 	count := 1
 	for ; count <= 5; count ++ {
 		message := "hello rabbitmq"
 		log.Println("send message: ", count)
-		if err = channel.Publish("", queue.Name, false, false, amqp.Publishing{
+		if err := channel.Publish("", queue.Name, false, false, amqp.Publishing{
 			ContentType: "text/plain",
-			Body:        []byte(message),
+			DeliveryMode: amqp.Persistent,
+			Body:        []byte(fmt.Sprintf("%d-%s", count, message)),
 		}); err != nil {
 			log.Fatal("Failed to send message to queue")
 		}
