@@ -1,0 +1,24 @@
+server1:
+    image: simple-server:v1
+    container_name: server1
+    net: "simple-server"
+    ports:
+      - "8111:8000"
+    command: /app/server -who zhangsan
+server2:
+    image: simple-server:v1
+    container_name: server2
+    net: "simple-server"
+    ports:
+      - "8112:8000"
+    command: /app/server -who lisi
+
+haproxy:
+    image: haproxy:latest
+    container_name: haproxy
+    net: "simple-server"
+    ports:
+      - "6301:6301"
+      - "6302:6302"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
