@@ -21,13 +21,14 @@ func main() {
 	}
 	defer channel.Close()
 	// Message durability
-	queue, err := channel.QueueDeclare("task_queue", true, false, false, false, nil)
-	if err != nil {
-		log.Fatal("Failed to declare a queue")
-	}
+	//queue, err := channel.QueueDeclare("task_queue", true, false, false, false, nil)
+	//if err != nil {
+	//	log.Fatal("Failed to declare a queue")
+	//}
 	doneChan := make(chan struct{})
 	go func() {
-		UseQueue(channel, queue)
+		//UseQueue(channel, queue)
+		UseExchange(channel)
 		doneChan <- struct{}{}
 	}()
 	<- doneChan
@@ -38,6 +39,7 @@ func UseQueue(channel *amqp.Channel, queue amqp.Queue) {
 	for ; count <= 5; count ++ {
 		message := "hello rabbitmq"
 		log.Println("send message: ", count)
+		// exchange default exchange
 		if err := channel.Publish("", queue.Name, false, false, amqp.Publishing{
 			ContentType: "text/plain",
 			DeliveryMode: amqp.Persistent,
@@ -47,4 +49,26 @@ func UseQueue(channel *amqp.Channel, queue amqp.Queue) {
 		}
 		<- time.NewTimer(time.Second * 5).C
 	}
+}
+
+func UseExchange(channel *amqp.Channel) {
+	// kind direct, topic, headers, fanout.
+	// fanout broadcast. to all queue it knows.
+	err := channel.ExchangeDeclare("logs", "fanout", true, false, false, false, nil)
+	if err != nil {
+		log.Fatalf("declare a exchange error")
+	}
+	// TODO test: sudo rabbitmqctl list_exchanges
+	body := "hello rabbitmq exchange"
+	for cnt := 1; cnt < 3; cnt ++ {
+		if err = channel.Publish("logs", "", false, false,amqp.Publishing{
+			ContentType:     "text/plain",
+			Body:            []byte(body),
+		}); err != nil {
+			log.Fatalf("Failed to send message to exchange")
+		}
+		log.Println("[*] send ", body)
+		<- time.NewTimer(time.Second*5).C
+	}
+
 }
