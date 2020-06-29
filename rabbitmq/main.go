@@ -28,7 +28,8 @@ func main() {
 	doneChan := make(chan struct{})
 	go func() {
 		//UseQueue(channel, queue)
-		UseExchange(channel)
+		//UseExchange(channel)
+		UseDirectExchange(channel)
 		doneChan <- struct{}{}
 	}()
 	<- doneChan
@@ -71,4 +72,26 @@ func UseExchange(channel *amqp.Channel) {
 		<- time.NewTimer(time.Second*5).C
 	}
 
+}
+
+func UseDirectExchange(channel *amqp.Channel) {
+	err := channel.ExchangeDeclare("logs_direct", "direct", true, false, false, false, nil)
+	if err != nil {
+		log.Fatalf("declare a direct exchange error ", err)
+	}
+	body := "test direct exchange"
+	routingKeys := []string{"info", "error"}
+	for cnt := 1; cnt < 4; cnt ++ {
+		for _, route := range routingKeys {
+			msg := fmt.Sprintf("%d --> %s", cnt, route) + body
+			if err = channel.Publish("logs_direct", route, false, false, amqp.Publishing{
+				ContentType: "text/plain",
+				Body: []byte(msg),
+			}); err != nil {
+				log.Fatalf("Failed to send a message to exchange")
+			}
+			log.Println("send success: ", msg)
+			<- time.NewTimer(time.Second*5).C
+		}
+	}
 }
