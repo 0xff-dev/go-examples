@@ -29,7 +29,8 @@ func main() {
 	go func() {
 		//UseQueue(channel, queue)
 		//UseExchange(channel)
-		UseDirectExchange(channel)
+		//UseDirectExchange(channel)
+		UseTopic(channel)
 		doneChan <- struct{}{}
 	}()
 	<- doneChan
@@ -93,5 +94,23 @@ func UseDirectExchange(channel *amqp.Channel) {
 			log.Println("send success: ", msg)
 			<- time.NewTimer(time.Second*5).C
 		}
+	}
+}
+
+func UseTopic(channel *amqp.Channel) {
+	err := channel.ExchangeDeclare("logs_topic", "topic", true, false, false, false, nil)
+	if err != nil {
+		log.Fatalf("decleare a topic exchange error: %s", err)
+	}
+	msgs := []string{"kern.critical", "A critical kernel error"}
+	for _, msg := range msgs {
+		if err = channel.Publish("logs_topic", msg, false, false, amqp.Publishing{
+			ContentType: "text/plain",
+			Body: []byte(msg),
+		}); err != nil {
+			log.Fatalf("send %s error: %s", msg, err)
+		}
+		log.Printf("send %s success\n", msg)
+		<- time.NewTimer(time.Second*2).C
 	}
 }
