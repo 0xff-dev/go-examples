@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"log"
+	"strconv"
 	"time"
 )
 
@@ -30,26 +31,28 @@ func main() {
 		//UseQueue(channel, queue)
 		//UseExchange(channel)
 		//UseDirectExchange(channel)
-		UseTopic(channel)
+		//UseTopic(channel)
+		UseRPC(channel)
+		<-time.NewTimer(time.Minute).C
 		doneChan <- struct{}{}
 	}()
-	<- doneChan
+	<-doneChan
 }
 
 func UseQueue(channel *amqp.Channel, queue amqp.Queue) {
 	count := 1
-	for ; count <= 5; count ++ {
+	for ; count <= 5; count++ {
 		message := "hello rabbitmq"
 		log.Println("send message: ", count)
 		// exchange default exchange
 		if err := channel.Publish("", queue.Name, false, false, amqp.Publishing{
-			ContentType: "text/plain",
+			ContentType:  "text/plain",
 			DeliveryMode: amqp.Persistent,
-			Body:        []byte(fmt.Sprintf("%d-%s", count, message)),
+			Body:         []byte(fmt.Sprintf("%d-%s", count, message)),
 		}); err != nil {
 			log.Fatal("Failed to send message to queue")
 		}
-		<- time.NewTimer(time.Second * 5).C
+		<-time.NewTimer(time.Second * 5).C
 	}
 }
 
@@ -62,15 +65,15 @@ func UseExchange(channel *amqp.Channel) {
 	}
 	// TODO test: sudo rabbitmqctl list_exchanges
 	body := "hello rabbitmq exchange"
-	for cnt := 1; cnt < 3; cnt ++ {
-		if err = channel.Publish("logs", "", false, false,amqp.Publishing{
-			ContentType:     "text/plain",
-			Body:            []byte(body),
+	for cnt := 1; cnt < 3; cnt++ {
+		if err = channel.Publish("logs", "", false, false, amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
 		}); err != nil {
 			log.Fatalf("Failed to send message to exchange")
 		}
 		log.Println("[*] send ", body)
-		<- time.NewTimer(time.Second*5).C
+		<-time.NewTimer(time.Second * 5).C
 	}
 
 }
@@ -82,17 +85,17 @@ func UseDirectExchange(channel *amqp.Channel) {
 	}
 	body := "test direct exchange"
 	routingKeys := []string{"info", "error"}
-	for cnt := 1; cnt < 4; cnt ++ {
+	for cnt := 1; cnt < 4; cnt++ {
 		for _, route := range routingKeys {
 			msg := fmt.Sprintf("%d --> %s", cnt, route) + body
 			if err = channel.Publish("logs_direct", route, false, false, amqp.Publishing{
 				ContentType: "text/plain",
-				Body: []byte(msg),
+				Body:        []byte(msg),
 			}); err != nil {
 				log.Fatalf("Failed to send a message to exchange")
 			}
 			log.Println("send success: ", msg)
-			<- time.NewTimer(time.Second*5).C
+			<-time.NewTimer(time.Second * 5).C
 		}
 	}
 }
@@ -106,11 +109,49 @@ func UseTopic(channel *amqp.Channel) {
 	for _, msg := range msgs {
 		if err = channel.Publish("logs_topic", msg, false, false, amqp.Publishing{
 			ContentType: "text/plain",
-			Body: []byte(msg),
+			Body:        []byte(msg),
 		}); err != nil {
 			log.Fatalf("send %s error: %s", msg, err)
 		}
 		log.Printf("send %s success\n", msg)
-		<- time.NewTimer(time.Second*2).C
+		<-time.NewTimer(time.Second * 2).C
+	}
+}
+
+func fib(n int) int {
+	if n == 0 {
+		return 0
+	}
+	if n == 1 {
+		return 1
+	}
+	return fib(n-1) + fib(n-2)
+}
+
+func UseRPC(channel *amqp.Channel) {
+	q, err := channel.QueueDeclare("rpc_queue", false, false, false, false, nil)
+	if err != nil {
+		log.Fatal("declare queue error: ", err.Error())
+	}
+	err = channel.Qos(1, 0, false)
+	msgs, err := channel.Consume(q.Name, "", false, false, false, false, nil)
+	if err != nil {
+		log.Fatal("failed to register a consumer")
+	}
+	log.Println("[*] Awaiting RPC requests")
+	for d := range msgs {
+		n, _ := strconv.Atoi(string(d.Body))
+		log.Printf("[.] fib(%d) ", n)
+		resp := fib(n)
+		log.Println("res: ", resp)
+		if err = channel.Publish("", d.ReplyTo, false, false,
+			amqp.Publishing{
+				ContentType:   "text/plain",
+				CorrelationId: d.CorrelationId,
+				Body:          []byte(fmt.Sprintf("%d", resp)),
+			}); err != nil {
+			log.Fatal("failed to send resp: ", resp)
+		}
+		d.Ack(false)
 	}
 }
