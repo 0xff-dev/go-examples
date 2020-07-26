@@ -1,0 +1,2 @@
+int power(double, int);
+

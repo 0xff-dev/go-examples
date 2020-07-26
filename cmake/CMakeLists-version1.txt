@@ -1,0 +1,10 @@
+CMAKE_MINIMUM_REQUIRED (VERSION 2.8)
+
+project(power)
+
+aux_source_directory(. base_dir)
+
+add_subdirectory(math)
+
+add_executable(main ${base_dir})
+target_link_libraries(main MathFunctions)
